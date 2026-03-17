@@ -14,4 +14,5 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "app/main.py"]
+ENV PYTHONPATH=/app
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
