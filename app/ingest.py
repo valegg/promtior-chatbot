@@ -1,7 +1,8 @@
 import os
-import urllib.request
 import warnings
 from pathlib import Path
+
+import gdown
 
 from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -27,7 +28,7 @@ def download_pdf_if_needed():
     print(f"[ingest] Downloading PDF from {pdf_url} ...")
     try:
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(pdf_url, pdf_path)
+        gdown.download(pdf_url, str(pdf_path), quiet=False, fuzzy=True)
         print(f"[ingest] PDF saved to {PDF_PATH}")
     except Exception as e:
         warnings.warn(f"[ingest] Failed to download PDF: {e}")
