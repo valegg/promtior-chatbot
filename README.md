@@ -1,29 +1,40 @@
 # Promtior Chatbot
 
-A production-ready RAG (Retrieval Augmented Generation) chatbot that answers questions about [Promtior](https://promtior.ai) using LangChain, LangServe, FAISS, and OpenAI.
+A production-ready RAG (Retrieval Augmented Generation) chatbot that answers questions about [Promtior](https://promtior.ai) using LangChain, FAISS, and OpenAI.
+
+## Live Demo
+
+**[https://promtior-chatbot-production-e196.up.railway.app](https://promtior-chatbot-production-e196.up.railway.app)**
+
+```bash
+# Health check
+curl https://promtior-chatbot-production-e196.up.railway.app/health
+
+# Ask a question
+curl -X POST https://promtior-chatbot-production-e196.up.railway.app/chat/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"question": "What services does Promtior offer?"}}'
+```
 
 ## Features
 
 - Scrapes live content from https://promtior.ai
-- Optionally ingests a local PDF (`data/promtior.pdf`)
+- Ingests a local PDF (`data/promtior.pdf`)
 - Stores embeddings in a local FAISS vector index (persisted to disk)
 - Serves a clean dark-themed chat UI at `/`
-- Exposes a LangServe endpoint at `/chat/invoke`
-- Ready to deploy on Railway via Docker
+- Exposes a RAG endpoint at `POST /chat/invoke`
+- Deployed on Railway via Docker + GitHub Actions CI/CD
 
 ## Quick Start
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/valegg/promtior-chatbot.git
 cd promtior-chatbot
 
 cp .env.example .env
 # Set OPENAI_API_KEY in .env
 
 pip install -r requirements.txt
-
-# Optional: add the Promtior PDF
-cp /path/to/promtior.pdf data/promtior.pdf
 
 uvicorn app.main:app --reload --port 8000
 ```
@@ -35,6 +46,8 @@ Open http://localhost:8000.
 | Variable | Description |
 |---|---|
 | `OPENAI_API_KEY` | Your OpenAI API key (required) |
+| `PORT` | Port to bind (default: 8000) |
+| `PDF_URL` | Optional public URL to download the PDF from on startup |
 
 ## Endpoints
 
@@ -42,7 +55,7 @@ Open http://localhost:8000.
 |---|---|---|
 | `GET` | `/` | Chat UI (HTML) |
 | `GET` | `/health` | Health check — returns `{"status": "ok"}` |
-| `POST` | `/chat/invoke` | LangServe RAG chain invocation |
+| `POST` | `/chat/invoke` | RAG chain invocation |
 
 ### Example API call
 
@@ -56,8 +69,7 @@ Response:
 
 ```json
 {
-  "output": "Promtior offers AI consulting services including ...",
-  "metadata": { ... }
+  "output": "Promtior offers AI consulting services including ..."
 }
 ```
 
@@ -65,18 +77,22 @@ Response:
 
 ```
 promtior-chatbot/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml   # GitHub Actions CI/CD
 ├── app/
-│   ├── main.py          # FastAPI app + LangServe route
+│   ├── main.py          # FastAPI app + lifespan + endpoints
 │   ├── chain.py         # RAG chain (LCEL)
 │   ├── ingest.py        # Document loading + FAISS indexing
 │   └── static/
 │       └── index.html   # Chat UI
 ├── data/
-│   └── .gitkeep         # Place promtior.pdf here
+│   └── promtior.pdf     # Promtior documentation
 ├── vectorstore/         # FAISS index (auto-generated, gitignored)
 ├── doc/
 │   └── overview.md      # Architecture documentation
 ├── Dockerfile
+├── docker-compose.yml
 ├── railway.json
 ├── requirements.txt
 └── .env.example
@@ -84,41 +100,26 @@ promtior-chatbot/
 
 ## Deploy on Railway
 
-1. Push the repository to GitHub (make sure `.env` is in `.gitignore` and NOT committed)
-
-2. Go to https://railway.app and create a new project from your GitHub repo
-
-3. In Railway dashboard → your service → **Variables** tab, add the following secret:
-
+1. Push the repository to GitHub (`.env` must be gitignored)
+2. Go to https://railway.app → **New Project → Deploy from GitHub repo**
+3. In **Variables** tab, add:
    ```
    OPENAI_API_KEY = your-actual-openai-api-key
+   PORT = 8000
    ```
+4. Railway auto-detects the `Dockerfile` and deploys
+5. Go to **Settings → Networking → Generate Domain** to get the public URL
 
-4. Railway will auto-detect the `Dockerfile` and deploy
+### CI/CD with GitHub Actions
 
-5. Once deployed, go to **Settings → Networking → Generate Domain** to get your public URL
+Every push to `main` triggers an automatic deploy to Railway and runs a health check.
 
-6. Test the deployment:
-   ```bash
-   curl https://your-app.railway.app/health
-   ```
+Required GitHub secrets:
 
-### Local development
-
-1. Clone the repo
-2. Copy `.env.example` to `.env` and fill in your API key
-3. Optionally add `data/promtior.pdf`
-4. Run with Docker Compose:
-   ```bash
-   docker compose up -d --build
-   ```
-   Or without Docker:
-   ```bash
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload
-   ```
-
-See [doc/overview.md](doc/overview.md) for a full architecture diagram and detailed explanation.
+| Secret | Description |
+|---|---|
+| `RAILWAY_TOKEN` | Railway API token (Account → Tokens) |
+| `RAILWAY_PUBLIC_URL` | Your Railway public URL |
 
 ## Tech Stack
 
@@ -129,3 +130,7 @@ See [doc/overview.md](doc/overview.md) for a full architecture diagram and detai
 - **FAISS** — local vector store
 - **BeautifulSoup4** — web scraping
 - **PyPDF** — PDF parsing
+- **Railway** — deployment platform
+- **GitHub Actions** — CI/CD
+
+See [doc/overview.md](doc/overview.md) for full architecture documentation.
