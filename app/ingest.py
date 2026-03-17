@@ -29,6 +29,18 @@ def download_pdf_if_needed():
     try:
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
         gdown.download(pdf_url, str(pdf_path), quiet=False, fuzzy=True)
+
+        # Validate the downloaded file is actually a PDF
+        with open(pdf_path, "rb") as f:
+            header = f.read(4)
+        if header != b"%PDF":
+            pdf_path.unlink()
+            warnings.warn(
+                "[ingest] Downloaded file is not a valid PDF (got HTML instead). "
+                "Make sure the Google Drive file is shared as 'Anyone with the link'."
+            )
+            return
+
         print(f"[ingest] PDF saved to {PDF_PATH}")
     except Exception as e:
         warnings.warn(f"[ingest] Failed to download PDF: {e}")
