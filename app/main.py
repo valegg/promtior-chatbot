@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -25,19 +26,25 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.on_event("startup")
-async def startup_event():
+def _build_vectorstore():
     logger = logging.getLogger("uvicorn")
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         logger.error("OPENAI_API_KEY is not set. Vectorstore will not be built.")
         return
     try:
-        logger.info("Building vectorstore on startup...")
+        logger.info("Building vectorstore in background...")
         get_or_create_vectorstore()
         logger.info("Vectorstore ready.")
     except Exception as e:
         logger.error(f"Vectorstore build failed: {e}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Run in a thread so the server starts accepting requests immediately
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _build_vectorstore)
 
 
 @app.get("/", include_in_schema=False)
