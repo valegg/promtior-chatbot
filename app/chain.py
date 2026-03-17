@@ -5,8 +5,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from .ingest import get_or_create_vectorstore
-
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions about Promtior, \
 an AI consulting company. Use the following context retrieved from Promtior's website \
 and documentation to answer the user's question accurately.
@@ -35,8 +33,7 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
-def build_rag_chain():
-    vectorstore = get_or_create_vectorstore()
+def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     chain = (
@@ -49,6 +46,3 @@ def build_rag_chain():
         | StrOutputParser()
     )
     return chain
-
-
-rag_chain = build_rag_chain()

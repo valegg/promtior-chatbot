@@ -9,9 +9,6 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from langserve import add_routes
 
-from .chain import rag_chain
-from .ingest import get_or_create_vectorstore
-
 load_dotenv()
 
 app = FastAPI(
@@ -20,31 +17,34 @@ app = FastAPI(
     version="1.0.0",
 )
 
-add_routes(app, rag_chain, path="/chat")
-
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-def _build_vectorstore():
+def _init_rag():
     logger = logging.getLogger("uvicorn")
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logger.error("OPENAI_API_KEY is not set. Vectorstore will not be built.")
+        logger.error("OPENAI_API_KEY is not set. RAG chain will not be initialized.")
         return
     try:
-        logger.info("Building vectorstore in background...")
-        get_or_create_vectorstore()
-        logger.info("Vectorstore ready.")
+        from .ingest import get_or_create_vectorstore
+        from .chain import build_rag_chain
+
+        logger.info("Building vectorstore...")
+        vectorstore = get_or_create_vectorstore()
+        logger.info("Vectorstore ready. Initializing RAG chain...")
+        rag_chain = build_rag_chain(vectorstore)
+        add_routes(app, rag_chain, path="/chat")
+        logger.info("RAG chain ready.")
     except Exception as e:
-        logger.error(f"Vectorstore build failed: {e}")
+        logger.error(f"RAG initialization failed: {e}")
 
 
 @app.on_event("startup")
 async def startup_event():
-    # Run in a thread so the server starts accepting requests immediately
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _build_vectorstore)
+    loop.run_in_executor(None, _init_rag)
 
 
 @app.get("/", include_in_schema=False)
