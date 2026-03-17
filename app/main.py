@@ -8,6 +8,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from langserve import add_routes
 
+from .chain import rag_chain
+from .ingest import get_or_create_vectorstore
+
 load_dotenv()
 
 app = FastAPI(
@@ -15,8 +18,6 @@ app = FastAPI(
     description="RAG-powered chatbot for Promtior AI",
     version="1.0.0",
 )
-
-from app.chain import rag_chain  # noqa: E402
 
 add_routes(app, rag_chain, path="/chat")
 
@@ -29,13 +30,9 @@ async def startup_event():
     logger = logging.getLogger("uvicorn")
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logger.error(
-            "OPENAI_API_KEY is not set. "
-            "Vectorstore will not be built."
-        )
+        logger.error("OPENAI_API_KEY is not set. Vectorstore will not be built.")
         return
     try:
-        from app.ingest import get_or_create_vectorstore
         logger.info("Building vectorstore on startup...")
         get_or_create_vectorstore()
         logger.info("Vectorstore ready.")
