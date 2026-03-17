@@ -1,4 +1,5 @@
 import os
+import urllib.request
 import warnings
 from pathlib import Path
 
@@ -12,8 +13,31 @@ PDF_PATH = "./data/promtior.pdf"
 WEB_URL = "https://promtior.ai"
 
 
+def download_pdf_if_needed():
+    """Download the PDF from PDF_URL env var if it isn't already on disk."""
+    pdf_url = os.getenv("PDF_URL")
+    if not pdf_url:
+        return
+
+    pdf_path = Path(PDF_PATH)
+    if pdf_path.exists():
+        print("[ingest] PDF already exists locally — skipping download.")
+        return
+
+    print(f"[ingest] Downloading PDF from {pdf_url} ...")
+    try:
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(pdf_url, pdf_path)
+        print(f"[ingest] PDF saved to {PDF_PATH}")
+    except Exception as e:
+        warnings.warn(f"[ingest] Failed to download PDF: {e}")
+
+
 def load_documents():
     docs = []
+
+    # Download PDF from remote URL if PDF_URL is set and file is missing
+    download_pdf_if_needed()
 
     # Load web content
     try:
@@ -36,7 +60,7 @@ def load_documents():
     else:
         warnings.warn(
             f"[ingest] PDF not found at {PDF_PATH} — skipping. "
-            "Place promtior.pdf in the data/ directory to include it."
+            "Set PDF_URL env var or place promtior.pdf in the data/ directory."
         )
 
     return docs

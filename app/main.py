@@ -16,7 +16,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-from app.chain import rag_chain  # noqa: E402
+from chain import rag_chain  # noqa: E402
 
 add_routes(app, rag_chain, path="/chat")
 

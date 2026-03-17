@@ -5,7 +5,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from app.ingest import get_or_create_vectorstore
+from ingest import get_or_create_vectorstore
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions about Promtior, \
 an AI consulting company. Use the following context retrieved from Promtior's website \

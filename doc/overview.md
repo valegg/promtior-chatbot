@@ -1,91 +1,147 @@
-# Promtior Chatbot — Technical Overview
+# Promtior Chatbot — Technical Documentation
+
+---
 
 ## 1. Project Overview
 
-This chatbot answers questions about Promtior using **Retrieval Augmented Generation (RAG)**. Rather than relying solely on an LLM's pre-trained knowledge, the system first retrieves relevant passages from Promtior's own content and then feeds them to the model as grounding context. This makes answers accurate and up-to-date without fine-tuning.
+### Approach
 
-### Pipeline
+The challenge asked for a chatbot capable of answering questions about Promtior accurately. The key decision was to **not rely on the LLM's pre-trained knowledge alone**, since GPT-3.5 has no specific knowledge about Promtior. Instead, I implemented a **RAG (Retrieval Augmented Generation)** architecture: the system first retrieves relevant passages from Promtior's own content, then feeds them as grounding context to the LLM before generating a response.
 
-1. **Data Ingestion** (`app/ingest.py`)
-   - **Web scraping**: `WebBaseLoader` fetches and parses https://promtior.ai via BeautifulSoup, extracting clean text from the live website.
-   - **PDF loading**: `PyPDFLoader` loads `data/promtior.pdf` page by page. If the file is absent, a warning is emitted and the pipeline continues with the web content alone — the system is never hard-blocked by a missing file.
-   - **Chunking**: `RecursiveCharacterTextSplitter` splits documents into 1,000-character chunks with 200-character overlap, balancing context richness against embedding window limits.
-   - **Embedding**: Each chunk is embedded with OpenAI's `text-embedding-ada-002` model.
-   - **FAISS index**: Embeddings are stored in a local FAISS index saved to `./vectorstore/`. On subsequent starts the index is loaded from disk — no re-embedding needed unless the data changes.
+This approach guarantees that answers are based on real, up-to-date information from the company — not hallucinated content.
 
-2. **RAG Chain** (`app/chain.py`)
-   - A retriever fetches the top 4 most semantically similar chunks for a given question.
-   - A `ChatPromptTemplate` injects those chunks as context into a system message.
-   - `ChatOpenAI(model="gpt-3.5-turbo", temperature=0)` generates a grounded, deterministic answer.
-   - The chain is composed with LangChain Expression Language (LCEL) and exposed via LangServe.
+### Implementation Logic
 
-3. **API** (`app/main.py`)
-   - FastAPI serves the LangServe endpoint at `/chat/invoke` and a static chat UI at `/`.
-   - The vector store is warmed up on startup so the first request has low latency.
+The solution is structured in three layers:
 
-### Main Challenges & Solutions
+**1. Ingestion layer** — runs once at startup and builds a searchable knowledge base:
+- Scrapes the live content of https://promtior.ai using `WebBaseLoader` (LangChain + BeautifulSoup4)
+- Loads a local PDF document (`data/promtior.pdf`) using `PyPDFLoader`
+- Splits all text into 1,000-character chunks with 200-character overlap using `RecursiveCharacterTextSplitter`
+- Embeds every chunk using OpenAI's `text-embedding-ada-002` model
+- Stores the resulting vectors in a local **FAISS** index, persisted to disk so it is only built once
+
+**2. RAG chain layer** — runs on every user question:
+- Converts the user's question into an embedding and performs a similarity search against the FAISS index, retrieving the top 4 most relevant chunks
+- Injects those chunks as context into a `ChatPromptTemplate` system message
+- Sends the full prompt to `gpt-3.5-turbo` with `temperature=0` for deterministic answers
+- The chain is composed using **LangChain Expression Language (LCEL)** and served via **LangServe**
+
+**3. API + UI layer**:
+- **FastAPI** exposes the LangServe endpoint at `POST /chat/invoke` and a health check at `GET /health`
+- A vanilla JS single-page chat UI is served at `GET /` with a dark theme and suggestion chips
+
+### Main Challenges and How They Were Solved
 
 | Challenge | Solution |
 |---|---|
-| Missing PDF at build/run time | `FileNotFoundError` caught with `warnings.warn`; pipeline continues with web data |
-| Stale web content | Re-run `ingest.py` or delete `./vectorstore/` to force re-scraping on next start |
-| Cold start latency | Vector store loaded eagerly in the `lifespan` handler, not on first request |
+| The LLM has no knowledge of Promtior | RAG: ground every answer in retrieved chunks from Promtior's actual content |
+| PDF may not always be present | `FileNotFoundError` is caught gracefully — the pipeline continues with web data alone, never crashing |
+| Rebuilding embeddings on every restart is slow and costly | FAISS index is persisted to `./vectorstore/`; on subsequent starts it is loaded from disk in milliseconds |
+| Railway doesn't expose `OPENAI_API_KEY` at build time | The Dockerfile has no pre-build ingest step — the vector store is built at runtime on first startup |
+| Missing API key should fail visibly, not silently | Startup handler checks for `OPENAI_API_KEY` and logs a clear error if absent, instead of crashing the process |
 
 ---
 
 ## 2. Component Diagram
 
-```mermaid
-flowchart LR
-    U(["👤 User"])
-    UI["Chat UI\n(index.html)"]
-    LS["LangServe\nPOST /chat/invoke"]
-    RC["RAG Chain\n(LCEL)"]
-    RET["Retriever\n(k=4)"]
-    FAISS[("FAISS\nVector Store")]
-    EMB["OpenAI Embeddings\ntext-embedding-ada-002"]
-    LLM["ChatOpenAI\ngpt-3.5-turbo"]
-    R(["💬 Response"])
+The diagram below shows all components involved from the moment the user submits a question until the response is displayed.
 
+```mermaid
+flowchart TD
+    subgraph CLIENT["Client"]
+        U(["👤 User"])
+        UI["Chat UI\nindex.html — vanilla JS"]
+    end
+
+    subgraph API["API Layer (FastAPI)"]
+        LS["LangServe\nPOST /chat/invoke"]
+        HC["Health Check\nGET /health"]
+    end
+
+    subgraph RAG["RAG Chain (LangChain LCEL)"]
+        RET["Retriever\ntop-k=4 similarity search"]
+        PT["ChatPromptTemplate\nsystem: context + question"]
+    end
+
+    subgraph VECTOR["Vector Store"]
+        FAISS[("FAISS Index\n./vectorstore/")]
+    end
+
+    subgraph INGEST["Ingestion (startup)"]
+        WL["WebBaseLoader\nhttps://promtior.ai"]
+        PL["PyPDFLoader\ndata/promtior.pdf"]
+        SP["RecursiveCharacterTextSplitter\nchunk=1000 overlap=200"]
+        EMB["OpenAI Embeddings\ntext-embedding-ada-002"]
+    end
+
+    subgraph OPENAI["OpenAI API (external)"]
+        LLM["ChatOpenAI\ngpt-3.5-turbo · temp=0"]
+    end
+
+    %% Ingestion flow (one-time on startup)
+    WL --> SP
+    PL --> SP
+    SP --> EMB
+    EMB --> FAISS
+
+    %% Query flow (every request)
     U -->|"types question"| UI
     UI -->|"POST /chat/invoke\n{input:{question}}"| LS
-    LS --> RC
-    RC --> RET
-    RET -->|"similarity search"| FAISS
-    FAISS -.->|"indexed by"| EMB
-    RET -->|"top-4 chunks"| RC
-    RC -->|"context + question"| LLM
-    LLM -->|"answer"| RC
-    RC --> LS
+    LS --> RET
+    RET -->|"embedding similarity search"| FAISS
+    FAISS -->|"top-4 chunks"| RET
+    RET --> PT
+    PT -->|"context + question"| LLM
+    LLM -->|"generated answer"| LS
     LS -->|"output field"| UI
-    UI --> R
+    UI -->|"displays answer"| U
 ```
+
+> The **Ingestion** subgraph runs once at server startup (or when the vectorstore directory does not exist). The **Query** flow runs on every user message.
 
 ---
 
 ## 3. Data Sources
 
-| Source | Loader | Content |
+| Source | Loader | What it provides |
 |---|---|---|
-| https://promtior.ai | `WebBaseLoader` | Company overview, services, team, use cases, blog posts |
-| `data/promtior.pdf` | `PyPDFLoader` | Supplementary documentation (brochures, case studies, etc.) |
+| https://promtior.ai | `WebBaseLoader` (BeautifulSoup4) | Company overview, services offered, team, use cases, blog posts — live content |
+| `data/promtior.pdf` | `PyPDFLoader` | Supplementary documentation not published on the public website |
 
-The website is the primary source for questions like "What services does Promtior offer?" and "When was the company founded?". The PDF extends coverage with any materials not published on the public site.
+Both sources are chunked and embedded into the same FAISS index, so retrieval is transparent across them. If the PDF is absent, the system logs a warning and continues with web content only.
 
 ---
 
-## 4. How to Run Locally
+## 4. Tech Stack
+
+| Layer | Technology | Version |
+|---|---|---|
+| Language | Python | 3.11 |
+| API framework | FastAPI + LangServe | 0.111.0 / 0.1.0 |
+| RAG orchestration | LangChain (LCEL) | 0.1.20 |
+| LLM | OpenAI gpt-3.5-turbo | via API |
+| Embeddings | OpenAI text-embedding-ada-002 | via API |
+| Vector store | FAISS (local, CPU) | 1.8.0 |
+| Web scraping | WebBaseLoader + BeautifulSoup4 | 4.12.3 |
+| PDF parsing | PyPDF | 4.2.0 |
+| Server | Uvicorn | 0.29.0 |
+| Deployment | Railway (Dockerfile) | — |
+
+---
+
+## 5. How to Run Locally
 
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
 cd promtior-chatbot
 
-# 2. Create your .env file
+# 2. Set your OpenAI API key
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit .env → OPENAI_API_KEY=sk-...
 
-# 3. Install dependencies (Python 3.11 recommended)
+# 3. Install dependencies
 pip install -r requirements.txt
 
 # 4. (Optional) Add the Promtior PDF
@@ -95,24 +151,31 @@ cp /path/to/promtior.pdf data/promtior.pdf
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open http://localhost:8000 in your browser.
+Open http://localhost:8000. The vector store is built automatically on first run and cached in `./vectorstore/`. To force a rebuild, delete that directory and restart.
 
-The vector store is built automatically on first run and cached in `./vectorstore/`. To force a rebuild (e.g. after updating data sources), delete that directory and restart.
+Alternatively, using Docker Compose:
+
+```bash
+docker compose up -d --build
+```
 
 ---
 
-## 5. Deployment — Railway
+## 6. Deployment — Railway
 
-Railway was chosen over AWS EC2 because:
-- OpenAI API handles LLM inference externally — no need for a high-RAM instance
-- Railway free tier (512 MB RAM) is sufficient for the FastAPI + FAISS application
-- Zero infrastructure management required
+Railway was chosen because:
+- OpenAI API handles LLM inference externally — no high-RAM instance needed
+- Railway's free tier (512 MB RAM) is sufficient for FastAPI + FAISS
+- Zero server management — connects directly to the GitHub repo and deploys via `Dockerfile`
 
-Deploy steps:
-1. Push code to GitHub
-2. Connect repo to Railway
-3. Set `OPENAI_API_KEY` in Railway **Variables** tab
-4. Railway builds and deploys automatically via `Dockerfile`
-5. Generate a public domain in **Settings → Networking**
+### Deploy steps
 
-Cost: $0 infrastructure + ~$0.05–0.10 OpenAI API usage for evaluation.
+1. Push the repository to GitHub (confirm `.env` is gitignored)
+2. Go to https://railway.app → **New Project → Deploy from GitHub repo**
+3. Select the repository
+4. In **Variables** tab, add: `OPENAI_API_KEY = sk-...`
+5. Railway detects `Dockerfile` and `railway.json` automatically and deploys
+6. Go to **Settings → Networking → Generate Domain** to get the public URL
+7. Verify: `curl https://your-app.railway.app/health` → `{"status":"ok"}`
+
+**Cost**: $0 infrastructure + ~$0.05–0.10 in OpenAI API usage for evaluation purposes.
