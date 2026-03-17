@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  chatbot:
+    build: .
+    container_name: promtior_chatbot
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./vectorstore:/app/vectorstore
+      - ./data:/app/data
+    restart: unless-stopped

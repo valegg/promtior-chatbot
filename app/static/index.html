@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Promtior AI Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0f0f1a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 1rem 2rem;
+      background: #1a1a2e;
+      border-bottom: 1px solid #2d2d4e;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #6c63ff, #00d4b4);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1rem;
+      color: #fff;
+    }
+
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    header span {
+      font-size: 0.75rem;
+      color: #00d4b4;
+      background: rgba(0, 212, 180, 0.1);
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 212, 180, 0.3);
+    }
+
+    #chat-container {
+      flex: 1;
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem 1rem;
+      gap: 1rem;
+      overflow-y: auto;
+    }
+
+    .message {
+      display: flex;
+      gap: 0.75rem;
+      max-width: 100%;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .avatar.bot {
+      background: linear-gradient(135deg, #6c63ff, #00d4b4);
+      color: #fff;
+    }
+
+    .avatar.user-av {
+      background: #2d2d4e;
+      color: #a0aec0;
+    }
+
+    .bubble {
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      max-width: 75%;
+      line-height: 1.6;
+      font-size: 0.92rem;
+      white-space: pre-wrap;
+    }
+
+    .message.bot .bubble {
+      background: #1e1e36;
+      border: 1px solid #2d2d4e;
+      border-top-left-radius: 2px;
+    }
+
+    .message.user .bubble {
+      background: linear-gradient(135deg, #6c63ff, #5a52e0);
+      color: #fff;
+      border-top-right-radius: 2px;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      padding: 0.75rem 1rem;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      background: #6c63ff;
+      border-radius: 50%;
+      animation: bounce 1.2s infinite;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+      40%            { transform: translateY(-6px); opacity: 1; }
+    }
+
+    #input-area {
+      width: 100%;
+      max-width: 800px;
+      padding: 1rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    #user-input {
+      flex: 1;
+      background: #1e1e36;
+      border: 1px solid #2d2d4e;
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: #e2e8f0;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s;
+      resize: none;
+      min-height: 48px;
+      max-height: 140px;
+    }
+
+    #user-input:focus { border-color: #6c63ff; }
+    #user-input::placeholder { color: #4a5568; }
+
+    #send-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, #6c63ff, #00d4b4);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s, transform 0.1s;
+      flex-shrink: 0;
+    }
+
+    #send-btn:hover:not(:disabled) { opacity: 0.9; transform: scale(1.04); }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #send-btn svg { width: 20px; height: 20px; }
+
+    .welcome {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #4a5568;
+    }
+
+    .welcome h2 { font-size: 1.4rem; color: #718096; margin-bottom: 0.5rem; }
+    .welcome p  { font-size: 0.9rem; }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+
+    .suggestion-chip {
+      background: #1e1e36;
+      border: 1px solid #2d2d4e;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
+      color: #a0aec0;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .suggestion-chip:hover {
+      border-color: #6c63ff;
+      color: #e2e8f0;
+    }
+
+    footer {
+      padding: 0.6rem;
+      font-size: 0.72rem;
+      color: #2d2d4e;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">P</div>
+  <h1>Promtior AI Assistant</h1>
+  <span>RAG · GPT-3.5</span>
+</header>
+
+<div id="chat-container">
+  <div class="welcome" id="welcome">
+    <h2>Ask me anything about Promtior</h2>
+    <p>I use real content from Promtior's website and documentation to answer your questions.</p>
+    <div class="suggestions">
+      <div class="suggestion-chip" onclick="sendSuggestion(this)">What services does Promtior offer?</div>
+      <div class="suggestion-chip" onclick="sendSuggestion(this)">When was the company founded?</div>
+      <div class="suggestion-chip" onclick="sendSuggestion(this)">Who is Promtior's target customer?</div>
+      <div class="suggestion-chip" onclick="sendSuggestion(this)">What makes Promtior different?</div>
+    </div>
+  </div>
+</div>
+
+<div id="input-area">
+  <textarea
+    id="user-input"
+    placeholder="Ask a question about Promtior…"
+    rows="1"
+    autocomplete="off"
+  ></textarea>
+  <button id="send-btn" onclick="sendMessage()" aria-label="Send">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"></line>
+      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+    </svg>
+  </button>
+</div>
+
+<footer>Powered by LangChain · FAISS · OpenAI</footer>
+
+<script>
+  const chatContainer = document.getElementById('chat-container');
+  const userInput     = document.getElementById('user-input');
+  const sendBtn       = document.getElementById('send-btn');
+
+  // Auto-resize textarea
+  userInput.addEventListener('input', () => {
+    userInput.style.height = 'auto';
+    userInput.style.height = Math.min(userInput.scrollHeight, 140) + 'px';
+  });
+
+  userInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  function sendSuggestion(el) {
+    userInput.value = el.textContent;
+    sendMessage();
+  }
+
+  function appendMessage(role, text) {
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${role === 'bot' ? 'bot' : 'user-av'}`;
+    avatar.textContent = role === 'bot' ? 'AI' : 'You';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    msg.appendChild(avatar);
+    msg.appendChild(bubble);
+    chatContainer.appendChild(msg);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    return bubble;
+  }
+
+  function showTyping() {
+    const welcome = document.getElementById('welcome');
+    if (welcome) welcome.remove();
+
+    const msg = document.createElement('div');
+    msg.className = 'message bot';
+    msg.id = 'typing-msg';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar bot';
+    avatar.textContent = 'AI';
+
+    const indicator = document.createElement('div');
+    indicator.className = 'bubble typing-indicator';
+    indicator.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+
+    msg.appendChild(avatar);
+    msg.appendChild(indicator);
+    chatContainer.appendChild(msg);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function removeTyping() {
+    const el = document.getElementById('typing-msg');
+    if (el) el.remove();
+  }
+
+  async function sendMessage() {
+    const text = userInput.value.trim();
+    if (!text) return;
+
+    userInput.value = '';
+    userInput.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    appendMessage('user', text);
+    showTyping();
+
+    try {
+      const res = await fetch('/chat/invoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: { question: text } }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      const answer = data.output ?? 'Sorry, I could not generate a response.';
+      removeTyping();
+      appendMessage('bot', answer);
+    } catch (err) {
+      removeTyping();
+      appendMessage('bot', `Error: ${err.message}. Please try again.`);
+    } finally {
+      sendBtn.disabled = false;
+      userInput.focus();
+    }
+  }
+</script>
+
+</body>
+</html>
