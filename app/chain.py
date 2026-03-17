@@ -3,7 +3,7 @@ import os
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions about Promtior, \
 an AI consulting company. Use the following context retrieved from Promtior's website \
@@ -36,10 +36,12 @@ def format_docs(docs):
 def build_rag_chain(vectorstore):
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
+    get_question = RunnableLambda(lambda x: x["question"])
+
     chain = (
         {
-            "context": retriever | format_docs,
-            "question": RunnablePassthrough(),
+            "context": get_question | retriever | format_docs,
+            "question": get_question,
         }
         | prompt
         | llm
