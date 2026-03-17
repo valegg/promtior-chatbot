@@ -1,0 +1,35 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy & Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        run: railway up --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Wait for service to be ready
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.RAILWAY_PUBLIC_URL }}/health)
+          if [ "$response" -ne 200 ]; then
+            echo "Health check failed with status $response"
+            exit 1
+          fi
+          echo "Health check passed (HTTP $response)"
